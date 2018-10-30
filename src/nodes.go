@@ -27,17 +27,27 @@ type efm struct {
 type nodeCollector struct {
 	vipMetric            *prometheus.Desc
 	databaseMetricStatus *prometheus.Desc
+	agentMetricStatus    *prometheus.Desc
 	data                 efm
 }
+
+type GetMetric func(data efm) float64
 
 const namespace = "efm"
 
 var efmLabels = []string{"node", "type"}
 
+func RegisterGauge(ch chan<- prometheus.Metric, desc *prometheus.Desc, data efm, getMetric func(nodeDetail nodeInfo) float64) {
+	for node, detail := range data.Nodes {
+		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, getMetric(detail), node, detail.Type)
+	}
+}
+
 func newNodeCollector(collection efm) *nodeCollector {
 	return &nodeCollector{
 		vipMetric:            prometheus.NewDesc(prometheus.BuildFQName(namespace, "", "vip_status"), "Show whether or not active vip", efmLabels, nil),
 		databaseMetricStatus: prometheus.NewDesc(prometheus.BuildFQName(namespace, "", "database_status"), "Show whether or not database is UP or DOWN", efmLabels, nil),
+		agentMetricStatus:    prometheus.NewDesc(prometheus.BuildFQName(namespace, "", "agent_status"), "Show whether or not agent is UP or DOWN", efmLabels, nil),
 		data:                 collection,
 	}
 }
@@ -47,34 +57,29 @@ func (collector *nodeCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (collector *nodeCollector) Collect(ch chan<- prometheus.Metric) {
-	collector.CollectVipMetric(ch)
-	collector.CollectDatabaseMetric(ch)
-}
+	var data = collector.data
 
-func (collector *nodeCollector) CollectVipMetric(ch chan<- prometheus.Metric) {
-	var metricValue float64
-
-	for node, detail := range collector.data.Nodes {
-		if detail.VipActive {
-			metricValue = 1
+	RegisterGauge(ch, collector.vipMetric, data, func(nodeDetail nodeInfo) float64 {
+		if nodeDetail.VipActive {
+			return 1
 		} else {
-			metricValue = 0
+			return 0
 		}
+	})
 
-		ch <- prometheus.MustNewConstMetric(collector.vipMetric, prometheus.GaugeValue, metricValue, node, detail.Type)
-	}
-}
-
-func (collector *nodeCollector) CollectDatabaseMetric(ch chan<- prometheus.Metric) {
-	var metricValue float64
-
-	for node, detail := range collector.data.Nodes {
-		if detail.DB == "UP" {
-			metricValue = 1
+	RegisterGauge(ch, collector.databaseMetricStatus, data, func(nodeDetail nodeInfo) float64 {
+		if nodeDetail.DB == "UP" {
+			return 1
 		} else {
-			metricValue = 0
+			return 0
 		}
+	})
 
-		ch <- prometheus.MustNewConstMetric(collector.databaseMetricStatus, prometheus.GaugeValue, metricValue, node, detail.Type)
-	}
+	RegisterGauge(ch, collector.agentMetricStatus, data, func(nodeDetail nodeInfo) float64 {
+		if nodeDetail.Agent == "UP" {
+			return 1
+		} else {
+			return 0
+		}
+	})
 }
