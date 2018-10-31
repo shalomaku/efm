@@ -1,0 +1,12 @@
+image: golang:alpine
+
+variables:
+  GO_PROJECT: gitlab.com/mdm/efm
+  ARTIFACTS_DIR: artifacts
+
+stages:
+  - build
+
+build:
+  script:
+      - echo ${GOPATH} 
